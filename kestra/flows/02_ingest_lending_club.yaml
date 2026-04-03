@@ -1,0 +1,160 @@
+id: 02_ingest_lending_club
+namespace: lending_club
+
+description: |
+  MAIN BATCH INGESTION PIPELINE
+  Downloads Lending Club 2007-2011 dataset (8.8MB) from Kaggle,
+  converts to Parquet, uploads to GCS, loads into BigQuery.
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      projectId: "{{ kv('GCP_PROJECT_ID') }}"
+      location: "{{ kv('GCP_LOCATION') }}"
+      serviceAccount: "{{ kv('GCP_SERVICE_ACCOUNT_JSON') }}"
+
+variables:
+  gcs_path: "gs://{{ kv('GCS_BUCKET_NAME') }}/raw/loans_2007_2011.parquet"
+
+tasks:
+
+  - id: download_and_convert
+    type: io.kestra.plugin.scripts.python.Script
+    description: "Download Lending Club CSV from Kaggle and convert to Parquet"
+    outputFiles:
+      - "*.parquet"
+    docker:
+      image: python:3.12-slim
+    beforeCommands:
+      - pip install pandas pyarrow requests --quiet
+    script: |
+      import os
+      import zipfile
+      import hashlib
+      import pandas as pd
+      import requests
+      from requests.auth import HTTPBasicAuth
+
+      print("Starting ingestion...")
+      username = "{{ kv('KAGGLE_USERNAME') }}"
+      api_token = "{{ kv('KAGGLE_API_TOKEN') }}"
+
+      url = "https://www.kaggle.com/api/v1/datasets/download/imsparsh/lending-club-loan-dataset-2007-2011"
+      zip_path = "/tmp/lending_club.zip"
+      print("Downloading zip (8.8MB)...")
+      resp = requests.get(url, auth=HTTPBasicAuth(username, api_token), stream=True, timeout=120)
+      resp.raise_for_status()
+      with open(zip_path, "wb") as f:
+          for chunk in resp.iter_content(chunk_size=1024 * 1024):
+              f.write(chunk)
+      print(f"Download complete: {os.path.getsize(zip_path) / 1e6:.1f} MB")
+
+      with zipfile.ZipFile(zip_path) as z:
+          names = z.namelist()
+          print(f"Files in zip: {names}")
+          csv_files = [n for n in names if n.endswith(".csv") and "loan" in n.lower()]
+          if not csv_files:
+              csv_files = [n for n in names if n.endswith(".csv")]
+          csv_name = csv_files[0]
+          print(f"Reading: {csv_name}")
+          with z.open(csv_name) as f:
+              df = pd.read_csv(f, low_memory=False)
+
+      os.remove(zip_path)
+      print(f"Total rows: {len(df):,}")
+      print(f"Columns sample: {list(df.columns[:10])}")
+
+      key_cols = [
+        "id", "loan_amnt", "funded_amnt", "grade", "sub_grade",
+        "int_rate", "loan_status", "issue_d", "purpose", "addr_state",
+        "mths_since_last_delinq", "total_pymnt", "out_prncp",
+        "delinq_2yrs", "annual_inc", "dti"
+      ]
+      df = df[[c for c in key_cols if c in df.columns]].copy()
+
+      if "issue_d" in df.columns:
+          df["issue_d"] = pd.to_datetime(df["issue_d"], format="%b-%Y", errors="coerce")
+      df.rename(columns={"issue_d": "issue_date"}, inplace=True)
+
+      if "int_rate" in df.columns and df["int_rate"].dtype == object:
+          df["int_rate"] = df["int_rate"].str.replace("%", "").astype(float)
+
+      df["ingest_ts"] = pd.Timestamp.utcnow()
+      df["row_hash"] = df["id"].apply(
+          lambda x: hashlib.md5(str(x).encode()).hexdigest()
+      )
+
+      out_file = "loans_2007_2011.parquet"
+      df.to_parquet(out_file, index=False)
+      print(f"Saved {len(df):,} rows to {out_file}")
+
+  - id: upload_to_gcs
+    type: io.kestra.plugin.gcp.gcs.Upload
+    description: "Upload Parquet file to GCS"
+    from: "{{ outputs.download_and_convert.outputFiles['loans_2007_2011.parquet'] }}"
+    to: "{{ render(vars.gcs_path) }}"
+
+  - id: create_external_table
+    type: io.kestra.plugin.gcp.bigquery.Query
+    sql: |
+      CREATE OR REPLACE EXTERNAL TABLE
+        `{{ kv('GCP_PROJECT_ID') }}.lending_club_raw.loans_2007_2011_ext`
+      OPTIONS (
+        format = 'PARQUET',
+        uris = ['{{ render(vars.gcs_path) }}']
+      );
+
+  - id: merge_into_raw_table
+    type: io.kestra.plugin.gcp.bigquery.Query
+    sql: |
+      MERGE INTO `{{ kv('GCP_PROJECT_ID') }}.lending_club_raw.loans_raw` T
+      USING (
+        SELECT
+          CAST(id AS STRING)                      AS id,
+          CAST(loan_amnt AS FLOAT64)              AS loan_amnt,
+          CAST(funded_amnt AS FLOAT64)            AS funded_amnt,
+          CAST(grade AS STRING)                   AS grade,
+          CAST(sub_grade AS STRING)               AS sub_grade,
+          CAST(REPLACE(CAST(int_rate AS STRING), '%', '') AS FLOAT64) AS int_rate,
+          CAST(loan_status AS STRING)             AS loan_status,
+          CAST(issue_date AS DATE)                AS issue_date,
+          CAST(purpose AS STRING)                 AS purpose,
+          CAST(addr_state AS STRING)              AS addr_state,
+          CAST(mths_since_last_delinq AS INT64)   AS mths_since_last_delinq,
+          CAST(total_pymnt AS FLOAT64)            AS total_pymnt,
+          CAST(out_prncp AS FLOAT64)              AS out_prncp,
+          CAST(delinq_2yrs AS INT64)              AS delinq_2yrs,
+          CAST(annual_inc AS FLOAT64)             AS annual_inc,
+          CAST(dti AS FLOAT64)                    AS dti,
+          CURRENT_TIMESTAMP()                     AS ingest_ts,
+          TO_HEX(MD5(CAST(id AS STRING)))         AS row_hash
+        FROM `{{ kv('GCP_PROJECT_ID') }}.lending_club_raw.loans_2007_2011_ext`
+        WHERE id IS NOT NULL
+      ) S
+      ON T.row_hash = S.row_hash
+      WHEN NOT MATCHED THEN
+        INSERT (
+          id, loan_amnt, funded_amnt, grade, sub_grade, int_rate,
+          loan_status, issue_date, purpose, addr_state,
+          mths_since_last_delinq, total_pymnt, out_prncp,
+          delinq_2yrs, annual_inc, dti, ingest_ts, row_hash
+        )
+        VALUES (
+          S.id, S.loan_amnt, S.funded_amnt, S.grade, S.sub_grade,
+          S.int_rate, S.loan_status, S.issue_date, S.purpose,
+          S.addr_state, S.mths_since_last_delinq, S.total_pymnt,
+          S.out_prncp, S.delinq_2yrs, S.annual_inc, S.dti,
+          S.ingest_ts, S.row_hash
+        );
+
+  - id: purge_temp_files
+    type: io.kestra.plugin.core.storage.PurgeCurrentExecutionFiles
+
+  - id: log_success
+    type: io.kestra.plugin.core.log.Log
+    message: "Ingestion complete. Data in lending_club_raw.loans_raw"
+
+triggers:
+  - id: monthly_schedule
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 6 1 * *"

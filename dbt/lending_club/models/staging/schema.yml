@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_loans
+    description: "Cleaned and standardised loan records from raw ingestion"
+    columns:
+      - name: loan_id
+        description: "Unique loan identifier"
+        tests:
+          - unique
+          - not_null
+      - name: grade
+        description: "Loan grade assigned by Lending Club (A–G)"
+        tests:
+          - not_null
+      - name: interest_rate
+        description: "Annual interest rate as a percentage"
+      - name: loan_status
+        description: "Current status of the loan"
+        tests:
+          - not_null
+      - name: risk_tier
+        description: "Derived risk category: Low / Medium / High Risk"
+        tests:
+          - accepted_values:
+              values: ['Low Risk', 'Medium Risk', 'High Risk', 'Unknown']

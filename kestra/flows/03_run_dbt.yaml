@@ -1,0 +1,53 @@
+id: 03_run_dbt
+namespace: lending_club
+
+description: |
+  DBT TRANSFORMATION PIPELINE
+
+  Runs dbt transformations in this order:
+    1. dbt deps    → installs dbt packages (dbt_utils)
+    2. dbt run     → builds all 3 models (staging → core → mart)
+    3. dbt test    → runs all 5 data quality tests
+
+  Uses a Docker container with dbt-bigquery pre-installed.
+  Mounts the dbt project from /app/dbt inside the Kestra container.
+
+pluginDefaults:
+  - type: io.kestra.plugin.scripts.python.Commands
+    values:
+      docker:
+        image: ghcr.io/dbt-labs/dbt-bigquery:1.8.0
+        volumes:
+          - /app/dbt:/app/dbt
+          - /app/credentials:/app/credentials
+      env:
+        GCP_PROJECT_ID: "{{ kv('GCP_PROJECT_ID') }}"
+        GCP_LOCATION: "{{ kv('GCP_LOCATION') }}"
+        GOOGLE_APPLICATION_CREDENTIALS: /app/credentials/gcp-service-account.json
+
+tasks:
+
+  - id: dbt_deps
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Install dbt package dependencies (dbt_utils)"
+    commands:
+      - dbt deps --project-dir /app/dbt/lending_club --profiles-dir /app/dbt/lending_club
+
+  - id: dbt_run
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Build all models: stg_loans → fct_loans → mart_loan_risk"
+    commands:
+      - dbt run --project-dir /app/dbt/lending_club --profiles-dir /app/dbt/lending_club --target kestra
+
+  - id: dbt_test
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Run all 5 data quality tests"
+    commands:
+      - dbt test --project-dir /app/dbt/lending_club --profiles-dir /app/dbt/lending_club --target kestra
+
+  - id: log_complete
+    type: io.kestra.plugin.core.log.Log
+    message: |
+      dbt pipeline complete!
+      All models built and tests passed.
+      Dashboard data is now fresh in lending_club_mart.

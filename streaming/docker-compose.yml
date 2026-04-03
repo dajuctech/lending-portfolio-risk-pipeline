@@ -1,0 +1,97 @@
+version: "3.8"
+
+# ─────────────────────────────────────────────────────────────
+# STREAMING STACK — Redpanda + Flink + PostgreSQL
+#
+# HOW TO USE:
+#   docker compose up -d          ← start all services
+#   docker compose down -v        ← stop and delete all data
+#
+# After starting:
+#   Flink UI:    http://localhost:8082
+#   Redpanda:    localhost:9092  (Kafka-compatible)
+#   PostgreSQL:  localhost:5433  (results database)
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Redpanda ─────────────────────────────────────────────────
+  # Kafka-compatible message broker.
+  # Loan events are produced to topic "loan-events".
+  # PyFlink reads from this topic.
+  redpanda:
+    image: redpandadata/redpanda:v25.1.1
+    container_name: lending_redpanda
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=512M
+      - --overprovisioned
+      - --node-id=0
+      - --kafka-addr=PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info"]
+      interval: 10s
+      retries: 5
+
+  # ── Flink JobManager ─────────────────────────────────────────
+  # The coordinator. Receives jobs, splits them into tasks.
+  # UI available at http://localhost:8082
+  jobmanager:
+    build:
+      context: .
+      dockerfile: Dockerfile.flink
+    container_name: lending_jobmanager
+    command: jobmanager
+    ports:
+      - "8082:8081"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: 1
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  # ── Flink TaskManager ─────────────────────────────────────────
+  # The worker. Executes the actual processing tasks.
+  taskmanager:
+    build:
+      context: .
+      dockerfile: Dockerfile.flink
+    container_name: lending_taskmanager
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: 1
+    depends_on:
+      - jobmanager
+
+  # ── PostgreSQL ───────────────────────────────────────────────
+  # Stores Flink aggregation results.
+  # Port 5433 (not 5432) to avoid clash with Kestra's PostgreSQL.
+  postgres:
+    image: postgres:15
+    container_name: lending_stream_postgres
+    environment:
+      POSTGRES_DB: lending_stream
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - lending_stream_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      retries: 5
+
+volumes:
+  lending_stream_pg_data:

@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────────────────────
+# HOW TO USE THIS FILE:
+# 1. Copy this file and rename the copy to: terraform.tfvars
+# 2. Replace "de-zoomcamp-2025-12345" with your real GCP project ID
+# 3. NEVER commit terraform.tfvars to GitHub
+#    (it is already protected in .gitignore)
+# ─────────────────────────────────────────────────────────────
+
+# Your GCP Project ID
+# Find it in the GCP console — top bar dropdown
+project_id = "de-zoomcamp-2025-12345"
+
+# GCP Region — europe-west2 is London
+region = "europe-west2"
+
+# Path to your GCP service account JSON key file
+# This file is created in the next step (GCP Service Account setup)
+credentials_file = "../credentials/gcp-service-account.json"

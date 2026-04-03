@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────
+# Custom Flink image with PyFlink + Kafka connector
+#
+# Built on top of the official Flink 1.17 image.
+# Adds: Python 3, PyFlink, Kafka connector JAR, JDBC connector JAR
+# ─────────────────────────────────────────────────────────────
+
+FROM flink:1.17-scala_2.12
+
+# Install Python 3 and pip inside the container
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install PyFlink — the Python API for Apache Flink
+RUN pip3 install apache-flink==1.17.0
+
+# Download Kafka connector JAR
+# This lets Flink read from and write to Kafka/Redpanda topics
+RUN wget -q \
+    https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/1.17.0/flink-sql-connector-kafka-1.17.0.jar \
+    -P /opt/flink/lib/
+
+# Download JDBC connector JAR
+# This lets Flink write results directly to PostgreSQL
+RUN wget -q \
+    https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.1.1-1.17/flink-connector-jdbc-3.1.1-1.17.jar \
+    -P /opt/flink/lib/
+
+# Download PostgreSQL JDBC driver
+# The JDBC connector needs this to speak PostgreSQL's language
+RUN wget -q \
+    https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.3/postgresql-42.7.3.jar \
+    -P /opt/flink/lib/
+
+# Create folder for our Flink job scripts
+RUN mkdir -p /opt/src/job
+
+# Copy our PyFlink job files into the image
+COPY src/ /opt/src/

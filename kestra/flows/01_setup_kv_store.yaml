@@ -1,0 +1,49 @@
+id: 01_setup_kv_store
+namespace: lending_club
+
+description: |
+  ONE-TIME SETUP FLOW — Run this ONCE before anything else.
+  Reads all credentials from environment variables passed via docker-compose.
+  Variables are prefixed with KESTRA_ in docker-compose, then referenced
+  as lowercase {{ envs.* }} in flows (Kestra v0.20 convention).
+
+tasks:
+  - id: set_project_id
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_PROJECT_ID
+    value: "{{ envs.gcp_project_id }}"
+    namespace: lending_club
+
+  - id: set_bucket_name
+    type: io.kestra.plugin.core.kv.Set
+    key: GCS_BUCKET_NAME
+    value: "{{ envs.gcs_bucket_name }}"
+    namespace: lending_club
+
+  - id: set_location
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_LOCATION
+    value: "{{ envs.gcp_location }}"
+    namespace: lending_club
+
+  - id: set_service_account
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_SERVICE_ACCOUNT_JSON
+    value: "{{ envs.gcp_service_account_json }}"
+    namespace: lending_club
+
+  - id: set_kaggle_username
+    type: io.kestra.plugin.core.kv.Set
+    key: KAGGLE_USERNAME
+    value: "{{ envs.kaggle_username }}"
+    namespace: lending_club
+
+  - id: set_kaggle_token
+    type: io.kestra.plugin.core.kv.Set
+    key: KAGGLE_API_TOKEN
+    value: "{{ envs.kaggle_api_token }}"
+    namespace: lending_club
+
+  - id: confirm
+    type: io.kestra.plugin.core.log.Log
+    message: "All 6 credentials saved to KV Store successfully."

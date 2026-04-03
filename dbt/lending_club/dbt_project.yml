@@ -1,0 +1,23 @@
+name: lending_club
+version: "1.0.0"
+config-version: 2
+
+profile: lending_club
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  lending_club:
+    staging:
+      +materialized: view
+      +dataset: lending_club_staging
+    core:
+      +materialized: table
+      +dataset: lending_club_core
+    mart:
+      +materialized: table
+      +dataset: lending_club_mart

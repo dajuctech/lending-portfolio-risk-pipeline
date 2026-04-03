@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: lending_club_raw
+    database: "{{ env_var('GCP_PROJECT_ID') }}"
+    schema: lending_club_raw
+    tables:
+      - name: loans_raw
+        description: "Raw loan data ingested from Kaggle via Kestra"

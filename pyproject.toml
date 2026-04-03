@@ -1,0 +1,18 @@
+[project]
+name = "08-project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "dbt-bigquery>=1.11.1",
+    "dlt[bigquery]>=1.24.0",
+    "google-cloud-bigquery>=3.40.1",
+    "google-cloud-storage>=3.1.1",
+    "kafka-python>=2.3.0",
+    "pandas>=3.0.1",
+    "pyarrow>=23.0.1",
+    "pyspark>=4.1.1",
+    "python-dotenv>=1.2.2",
+    "requests>=2.33.0",
+]
