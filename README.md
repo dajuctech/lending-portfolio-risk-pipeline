@@ -329,6 +329,14 @@ Or build your own by connecting Looker Studio to `lending_club_mart.mart_loan_ri
 
 ---
 
+## dbt Lineage Graph
+
+![dbt Lineage Graph](docs/dbt_lineage.png)
+
+> The lineage graph shows how data flows through the 3 dbt layers — from raw source all the way to the mart table that powers the dashboard.
+
+---
+
 ## Data Model (dbt 3-layer architecture)
 
 ```
