@@ -42,8 +42,6 @@ This project builds a **fully automated, end-to-end credit risk data pipeline** 
 
 ## Architecture
 
-![Architecture Diagram](docs/architecture.png)
-
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    DATA SOURCE                                   │
