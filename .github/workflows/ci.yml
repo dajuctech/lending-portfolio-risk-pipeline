@@ -1,0 +1,46 @@
+# ============================================================
+# GitHub Actions CI Pipeline
+# Runs automatically every time you push code to GitHub
+# Checks that all dbt models compile without errors
+# ============================================================
+
+name: CI — dbt Compile Check
+
+# When to run — on every push and every Pull Request
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dbt-compile:
+    name: dbt compile check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dbt
+        run: pip install dbt-bigquery==1.8.0
+
+      - name: Install dbt packages
+        working-directory: dbt/lending_club
+        run: dbt deps
+
+      - name: dbt compile
+        working-directory: dbt/lending_club
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/gcp-key.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json
+          dbt compile --profiles-dir .
