@@ -42,47 +42,7 @@ This project builds a **fully automated, end-to-end credit risk data pipeline** 
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    DATA SOURCE                                   │
-│        Kaggle Lending Club CSV (2.26M rows, 2007–2011)          │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              INFRASTRUCTURE (Terraform)                          │
-│   GCS Bucket + 4 BigQuery Datasets + Partitioned Table          │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              ORCHESTRATION (Kestra)                              │
-│   Flow 1: Ingest CSV → GCS → BigQuery (MERGE, idempotent)       │
-│   Flow 2: Scheduled daily trigger                               │
-│   Flow 3: Run dbt transformations (Docker container)            │
-└────────────┬───────────────────────────┬────────────────────────┘
-             │                           │
-             ▼                           ▼
-┌────────────────────────┐  ┌────────────────────────────────────┐
-│  STREAMING             │  │  BATCH TRANSFORMATION (dbt)        │
-│  Redpanda (Kafka)      │  │  stg_loans  (view)                 │
-│  PyFlink windows       │  │  fct_loans  (table)                │
-│  PostgreSQL sink       │  │  mart_loan_risk  (table)           │
-└────────────────────────┘  └──────────────┬─────────────────────┘
-                                           │
-                                           ▼
-                         ┌─────────────────────────────────────┐
-                         │   BATCH PROCESSING (PySpark)        │
-                         │   4 queries: default rate, volume,  │
-                         │   DPD buckets, risk tier summary    │
-                         └──────────────┬──────────────────────┘
-                                        │
-                                        ▼
-                         ┌─────────────────────────────────────┐
-                         │   DASHBOARD (Looker Studio)         │
-                         │   7 tiles — live BigQuery connection│
-                         └─────────────────────────────────────┘
-```
+![Architecture Diagram](docs/architecture.png)
 
 ---
 
