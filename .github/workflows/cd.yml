@@ -1,0 +1,55 @@
+# ============================================================
+# GitHub Actions CD Pipeline
+# Runs automatically every time you push to main
+# Builds all dbt models in BigQuery (production deployment)
+# ============================================================
+
+name: CD — dbt Deploy to Production
+
+# Only runs on direct pushes to main (not on pull requests)
+on:
+  push:
+    branches: [main]
+
+jobs:
+  dbt-deploy:
+    name: dbt run to production BigQuery
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dbt
+        run: pip install dbt-bigquery==1.8.0
+
+      - name: Install dbt packages
+        working-directory: dbt/lending_club
+        run: dbt deps
+
+      - name: dbt run (deploy models to BigQuery)
+        working-directory: dbt/lending_club
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/gcp-key.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json
+          dbt run --profiles-dir .
+
+      - name: dbt test (verify models after deploy)
+        working-directory: dbt/lending_club
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/gcp-key.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json
+          dbt test --profiles-dir .
