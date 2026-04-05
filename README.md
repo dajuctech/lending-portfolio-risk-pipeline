@@ -42,7 +42,48 @@ This project builds a **fully automated, end-to-end credit risk data pipeline** 
 
 ## Architecture
 
-![Architecture Diagram](docs/architecture.png)
+```
++--------------------------------------------------+
+|               DATA SOURCE                        |
+|   Kaggle Lending Club CSV (2.26M rows, 2007-11)  |
++--------------------------------------------------+
+                        |
+                        v
++--------------------------------------------------+
+|          INFRASTRUCTURE (Terraform)              |
+|   GCS Bucket + 4 BigQuery Datasets + Table       |
++--------------------------------------------------+
+                        |
+                        v
++--------------------------------------------------+
+|           ORCHESTRATION (Kestra)                 |
+|  Flow 1: Ingest CSV -> GCS -> BigQuery (MERGE)   |
+|  Flow 2: Scheduled daily trigger                 |
+|  Flow 3: Run dbt transformations (Docker)        |
++--------------------------------------------------+
+           |                        |
+           v                        v
++---------------------+  +----------------------+
+|     STREAMING       |  |  TRANSFORMATION(dbt) |
+|  Redpanda (Kafka)   |  |  stg_loans  (view)   |
+|  PyFlink windows    |  |  fct_loans  (table)  |
+|  PostgreSQL sink    |  |  mart_loan_risk       |
++---------------------+  +----------+-----------+
+                                     |
+                                     v
+                        +------------------------+
+                        | BATCH PROCESSING       |
+                        | PySpark — 4 queries:   |
+                        | default rate, volume,  |
+                        | DPD buckets, risk tier |
+                        +----------+-------------+
+                                   |
+                                   v
+                        +------------------------+
+                        | DASHBOARD (Looker)     |
+                        | 7 tiles — live BigQuery|
+                        +------------------------+
+```
 
 ---
 
